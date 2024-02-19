@@ -21,7 +21,6 @@ class CubeSat_fsw:
         self.attRefMsg = None
         self.attGuidMsg = None
         self.cmdRwMotorMsg = None
-        self.mtbCmdMsg = None
 
         self.processName = SimBase.FSWProcessName
         self.processTasksTimeStep = mc.sec2nano(fswRate)
@@ -58,20 +57,13 @@ class CubeSat_fsw:
 
         self.rwMotorTorque = rwMotorTorque.rwMotorTorque()
         self.rwMotorTorque.ModelTag = "rwMotorTorque"
-        
-        self.tam_com_module = tamComm.tamComm()
-        self.tam_com_module.ModelTag = "tamComm"
-        
-        self.mtb_momentum_management_module = mtbMomentumManagement.mtbMomentumManagement()
-        self.mtb_momentum_management_module.ModelTag = "mtbMomentumManagement"   
-        
+
         self.setupGatewayMsgs(SimBase)
 
         self.InitAllFSWObjects(SimBase)
 
         SimBase.fswProc.addTask(SimBase.CreateNewTask("inertial3DPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("hillPointTask", self.processTasksTimeStep), 20)
-        SimBase.fswProc.addTask(SimBase.CreateNewTask("mtb_mom_management_task", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("sunSafePointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("velocityPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpFeedbackTask", self.processTasksTimeStep), 10)
@@ -84,9 +76,6 @@ class CubeSat_fsw:
         SimBase.AddModelToTask("hillPointTask", self.hillPoint, 10)
         SimBase.AddModelToTask("hillPointTask", self.trackingError, 9)
 
-        SimBase.AddModelToTask("mtb_mom_management_task", self.tam_com_module, 10)
-        SimBase.AddModelToTask("mtb_mom_management_task", self.mtb_momentum_management_module, 9)
-        
         SimBase.AddModelToTask("sunSafePointTask", self.cssWlsEst, 10)
         SimBase.AddModelToTask("sunSafePointTask", self.sunSafePoint, 9)
 
@@ -162,15 +151,7 @@ class CubeSat_fsw:
                                 "self.enableTask('hillPointTask')",
                                 "self.enableTask('mrpSteeringRWsTask')",
                                 "self.setAllButCurrentEventActivity('initiateSteeringRW', True)"])
-        
-        SimBase.createNewEvent("mtb_momentum_management", self.processTasksTimeStep, True,
-                                ["self.modeRequest == 'mtb_momentum_management'"],
-                                ["self.fswProc.disableAllTasks()",
-                                "self.FSWModels.zeroGateWayMsgs()",
-                                "self.enableTask('inertial3DPointTask')",
-                                "self.enableTask('mtb_mom_management_task')",
-                                "self.enableTask('mrpFeedbackRWsTask')",
-                                "self.setAllButCurrentEventActivity('mtb_momentum_management', True)"])
+
 
     def SetInertial3DPointGuidance(self):
         self.inertial3D.sigma_R0N = [0.2, 0.4, 0.6]
@@ -197,23 +178,6 @@ class CubeSat_fsw:
         self.trackingError.attNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
         self.trackingError.attRefInMsg.subscribeTo(self.attRefMsg)
         messaging.AttGuidMsg_C_addAuthor(self.trackingError.attGuidOutMsg, self.attGuidMsg)
-        
-    def setTAMComm(self, SimBase):
-        self.tam_com_module.dcm_BS = [1., 0., 0., 0., 1., 0., 0., 0., 1.]
-        self.tam_com_module.tamInMsg.subscribeTo(SimBase.DynModels.tam_module.tamDataOutMsg)
-
-    def setMtbMomManagement(self, SimBase):
-        self.mtb_momentum_management_module.wheelSpeedBiases = [800. * mc.rpm2radsec, 600. * mc.rpm2radsec,
-                                                        400. * mc.rpm2radsec, 200. * mc.rpm2radsec]
-        self.mtb_momentum_management_module.cGain = 0.003
-        self.mtb_momentum_management_module.rwParamsInMsg.subscribeTo(self.fswRwConfigMsg)
-        self.mtb_momentum_management_module.mtbParamsInMsg.subscribeTo(SimBase.DynModels.mtbParamsInMsg)
-        self.mtb_momentum_management_module.tamSensorBodyInMsg.subscribeTo(self.tam_com_module.tamOutMsg)
-        self.mtb_momentum_management_module.rwSpeedsInMsg.subscribeTo(SimBase.DynModels.rwStateEffector.rwSpeedOutMsg)
-        self.mtb_momentum_management_module.rwMotorTorqueInMsg.subscribeTo(self.rwMotorTorque.rwMotorTorqueOutMsg)
-        
-        messaging.MTBCmdMsg_C_addAuthor(self.mtb_momentum_management_module.mtbCmdOutMsg, self.mtbCmdMsg)
-
 
     def SetCSSWlsEst(self, SimBase):
         cssConfig = messaging.CSSConfigMsgPayload()
@@ -328,9 +292,6 @@ class CubeSat_fsw:
         self.SetMRPSteering()
         self.SetRateServo(SimBase)
         self.SetRWMotorTorque()
-        
-        self.setTAMComm(SimBase)
-        self.setMtbMomManagement(SimBase)
 
     def setupGatewayMsgs(self, SimBase):
         self.cmdTorqueMsg = messaging.CmdTorqueBodyMsg_C()
@@ -338,15 +299,12 @@ class CubeSat_fsw:
         self.attRefMsg = messaging.AttRefMsg_C()
         self.attGuidMsg = messaging.AttGuidMsg_C()
         self.cmdRwMotorMsg = messaging.ArrayMotorTorqueMsg_C()
-        self.mtbCmdMsg = messaging.MTBCmdMsg_C()
 
         self.zeroGateWayMsgs()
 
         # connect gateway FSW effector command msgs with the dynamics
         SimBase.DynModels.extForceTorqueObject.cmdTorqueInMsg.subscribeTo(self.cmdTorqueDirectMsg)
         SimBase.DynModels.rwStateEffector.rwMotorCmdInMsg.subscribeTo(self.cmdRwMotorMsg)
-        SimBase.DynModels.mtb_effector.mtbCmdInMsg.subscribeTo(self.mtbCmdMsg)
-
 
     def zeroGateWayMsgs(self):
         self.cmdTorqueMsg.write(messaging.CmdTorqueBodyMsgPayload())
@@ -354,4 +312,3 @@ class CubeSat_fsw:
         self.attRefMsg.write(messaging.AttRefMsgPayload())
         self.attGuidMsg.write(messaging.AttGuidMsgPayload())
         self.cmdRwMotorMsg.write(messaging.ArrayMotorTorqueMsgPayload())
-        self.mtbCmdMsg.write(messaging.MTBCmdMsgPayload())
