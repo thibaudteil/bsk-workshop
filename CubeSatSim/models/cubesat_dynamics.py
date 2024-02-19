@@ -1,7 +1,8 @@
 import numpy as np
 from Basilisk import __path__
+from Basilisk.architecture import messaging
 from Basilisk.simulation import ephemerisConverter
-from Basilisk.simulation import (spacecraft, extForceTorque, simpleNav,
+from Basilisk.simulation import (spacecraft, extForceTorque, simpleNav, eclipse,
                                  reactionWheelStateEffector, coarseSunSensor,
                                  magneticFieldWMM, magnetometer, MtbEffector)
 from Basilisk.simulation import thrusterDynamicEffector
@@ -41,17 +42,25 @@ class CubeSat_dynamics():
         self.rwStateEffector = reactionWheelStateEffector.ReactionWheelStateEffector()
         self.thrustersDynamicEffector = thrusterDynamicEffector.ThrusterDynamicEffector()
         self.EarthEphemObject = ephemerisConverter.EphemerisConverter()
+        
+        self.mag_field_module = magneticFieldWMM.MagneticFieldWMM()
+        self.tam_module = magnetometer.Magnetometer()
+        self.mtb_effector = MtbEffector.MtbEffector()
 
         self.InitAllDynObjects()
 
         SimBase.AddModelToTask(self.taskName, self.scObject, 201)
         SimBase.AddModelToTask(self.taskName, self.simpleNavObject, 109)
         SimBase.AddModelToTask(self.taskName, self.gravFactory.spiceObject, 200)
-        SimBase.AddModelToTask(self.taskName, self.EarthEphemObject, 199)
+        SimBase.AddModelToTask(self.taskName, self.EarthEphemObject, 198)
         SimBase.AddModelToTask(self.taskName, self.CSSConstellationObject, 108)
         SimBase.AddModelToTask(self.taskName, self.eclipseObject, 204)
         SimBase.AddModelToTask(self.taskName, self.rwStateEffector, 301)
         SimBase.AddModelToTask(self.taskName, self.extForceTorqueObject, 300)
+        
+        SimBase.AddModelToTask(self.taskName, self.mag_field_module, 199)
+        SimBase.AddModelToTask(self.taskName, self.tam_module, 210)
+        SimBase.AddModelToTask(self.taskName, self.mtb_effector, 213)
 
     def setSpacecraftHub(self):
         self.scObject.ModelTag = "bskSat"
@@ -81,6 +90,13 @@ class CubeSat_dynamics():
 
         self.EarthEphemObject.addSpiceInputMsg(self.gravFactory.spiceObject.planetStateOutMsgs[self.earth])
 
+    def setMagneticField(self):
+        self.mag_field_module.ModelTag = "WMM"
+        self.mag_field_module.dataPath = bskPath + '/supportData/MagneticField/'
+        epochMsg = sp.timeStringToGregorianUTCMsg('2019 June 27, 10:23:0.0 (UTC)')
+        self.mag_field_module.epochInMsg.subscribeTo(epochMsg)
+        self.mag_field_module.addSpacecraftToModel(self.scObject.scStateOutMsg) 
+        
     def setEclipseObject(self):
         self.eclipseObject.ModelTag = "eclipseObject"
         self.eclipseObject.sunInMsg.subscribeTo(self.gravFactory.spiceObject.planetStateOutMsgs[self.sun])
@@ -97,14 +113,41 @@ class CubeSat_dynamics():
         self.simpleNavObject.ModelTag = "SimpleNavigation"
         self.simpleNavObject.scStateInMsg.subscribeTo(self.scObject.scStateOutMsg)
 
+    def setMagnetoTorqueBar(self):
+        self.tam_module.ModelTag = "TAM_sensor"
+        self.tam_module.scaleFactor = 1.0
+        self.tam_module.senNoiseStd = [0.0,  0.0, 0.0]
+        self.tam_module.stateInMsg.subscribeTo(self.scObject.scStateOutMsg)
+        self.tam_module.magInMsg.subscribeTo(self.mag_field_module.envOutMsgs[0])
+ 
+    def setMtbConfig(self):
+        # mtbConfigData message
+        mtbConfigParams = messaging.MTBArrayConfigMsgPayload()
+        mtbConfigParams.numMTB = 4
+
+        # row major toque bar alignments
+        mtbConfigParams.GtMatrix_B =[
+            1., 0., 0., 0.70710678,
+            0., 1., 0., 0.70710678,
+            0., 0., 1., 0.]
+        maxDipole = 0.1
+        mtbConfigParams.maxMtbDipoles = [maxDipole]*mtbConfigParams.numMTB
+        self.mtbParamsInMsg = messaging.MTBArrayConfigMsg().write(mtbConfigParams)
+        
+    def setMtbEffector(self):
+        self.mtb_effector.ModelTag = "MtbEff"
+        self.mtb_effector.mtbParamsInMsg.subscribeTo(self.mtbParamsInMsg)
+        self.mtb_effector.magInMsg.subscribeTo(self.mag_field_module.envOutMsgs[0])
+        
+        self.scObject.addDynamicEffector(self.mtb_effector)
+        
     def setReactionWheelDynEffector(self):
         rwPosVector = [[0.1, 0.1, 0.22],
                        [0.1, -0.1, 0.22],
                        [-0.1, -0.1, 0.22],
                        [-0.1, 0.1, 0.22]
                        ]
-
-        varRWModel = messaging.BalancedWheels
+        
         beta = 52. * np.pi / 180.
         Gs = np.array([
                 [0.,            0.,             np.cos(beta), -np.cos(beta)],
@@ -112,55 +155,29 @@ class CubeSat_dynamics():
                 [np.sin(beta), -np.cos(beta),   0.,             0.]])
 
         # create each RW by specifying the RW type, the spin axis gsHat, plus optional arguments
-        RW1 = rwFactory.create('BCT_RWP015', Gs[:, 0], Omega_max=5000.  # RPM
-                               , RWModel=varRWModel, useRWfriction=False,
+        self.RW1 = self.rwFactory.create('BCT_RWP015', 
+                                    Gs[:, 0], 
+                                    Omega_max=5000.,
+                                    useRWfriction=False
                                )
-        RW2 = rwFactory.create('BCT_RWP015', Gs[:, 1], Omega_max=5000.  # RPM
-                               , RWModel=varRWModel, useRWfriction=False,
+        self.RW2 = self.rwFactory.create('BCT_RWP015', 
+                                    Gs[:, 1], 
+                                    Omega_max=5000., 
+                                    useRWfriction=False
                                )
-        RW3 = rwFactory.create('BCT_RWP015', Gs[:, 2], Omega_max=5000.  # RPM
-                               , RWModel=varRWModel, useRWfriction=False,
+        self.RW3 = self.rwFactory.create('BCT_RWP015', 
+                                    Gs[:, 2], 
+                                    Omega_max=5000.,
+                                    useRWfriction=False
                                )
 
-        RW4 = rwFactory.create('BCT_RWP015', Gs[:, 3], Omega_max=5000.  # RPM
-                               , RWModel=varRWModel, useRWfriction=False,
+        self.RW4 = self.rwFactory.create('BCT_RWP015', 
+                                    Gs[:, 3], 
+                                    Omega_max=5000., 
+                                    useRWfriction=False
                                )
         self.rwFactory.addToSpacecraft("RWA", self.rwStateEffector, self.scObject)
 
-    def setThrusterStateEffector(self):
-        thFactory = simIncludeThruster.thrusterFactory()
-
-        # 8 thrusters are modeled that act in pairs to provide the desired torque
-        thPos = [
-            [825.5/1000.0, 880.3/1000.0, 1765.3/1000.0],
-            [825.5/1000.0, 880.3/1000.0, 260.4/1000.0],
-            [880.3/1000.0, 825.5/1000.0, 1765.3/1000.0],
-            [880.3/1000.0, 825.5/1000.0, 260.4/1000.0],
-            [-825.5/1000.0, -880.3/1000.0, 1765.3/1000.0],
-            [-825.5/1000.0, -880.3/1000.0, 260.4/1000.0],
-            [-880.3/1000.0, -825.5/1000.0, 1765.3/1000.0],
-            [-880.3/1000.0, -825.5/1000.0, 260.4/1000.0]
-                 ]
-        thDir = [
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0]
-        ]
-        for pos_B, dir_B in zip(thPos, thDir):
-            thFactory.create(
-                'MOOG_Monarc_1'
-                , pos_B
-                , dir_B
-            )
-        # create thruster object container and tie to spacecraft object
-        thFactory.addToSpacecraft("ACS Thrusters",
-                                  self.thrustersDynamicEffector,
-                                  self.scObject)
 
     def setCSSConstellation(self):
         self.CSSConstellationObject.ModelTag = "cssConstellation"
@@ -200,13 +217,17 @@ class CubeSat_dynamics():
 
 
     def InitAllDynObjects(self):
+        self.setMtbConfig()
+        
         self.setSpacecraftHub()
         self.setGravityBodies()
         self.setExternalForceTorqueObject()
         self.setSimpleNavObject()
         self.setEclipseObject()
         self.setCSSConstellation()
+        self.setMagneticField()
 
         self.setReactionWheelDynEffector()
-        self.setThrusterStateEffector()
+        self.setMtbEffector()
+        self.setMagnetoTorqueBar()
 
