@@ -187,6 +187,18 @@ def plot_rate_error(timeLineSet, dataOmegaBR, id=None, livePlot=False):
         plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel('Rate Tracking Error [rad/s] ')
+    
+    return
+
+
+def plot_rate_norm(timeLineSet, dataOmegaBR, id=None, livePlot=False):
+    plt.figure(id)
+    plt.plot(timeLineSet, np.linalg.norm(dataOmegaBR, axis=1),
+             label=r'$|\omega_{BR}|$')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel('Rate Norm [rad/s] ')
+    
     return
 
 

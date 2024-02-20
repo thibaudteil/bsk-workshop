@@ -1,6 +1,7 @@
 
 import math
-
+import os
+import sys
 import numpy as np
 from Basilisk.architecture import messaging
 from Basilisk.fswAlgorithms import (hillPoint, inertial3D, attTrackingError, mrpFeedback,
@@ -11,6 +12,9 @@ from Basilisk.utilities import RigidBodyKinematics as rbk
 from Basilisk.utilities import fswSetupRW
 from Basilisk.utilities import macros as mc
 
+path = os.getcwd()
+sys.path.append(path + '/../modules')
+import magnetic_detumble_control
 
 class CubeSat_fsw:
     def __init__(self, SimBase, fswRate):
@@ -62,6 +66,10 @@ class CubeSat_fsw:
         self.tam_com_module = tamComm.tamComm()
         self.tam_com_module.ModelTag = "tamComm"
         
+        # python detumble controller
+        self.detumble_module = magnetic_detumble_control.MagneticDetumbleControl()
+        self.detumble_module.ModelTag = "magnetic_detumble"
+        
         self.mtb_momentum_management_module = mtbMomentumManagement.mtbMomentumManagement()
         self.mtb_momentum_management_module.ModelTag = "mtbMomentumManagement"   
         
@@ -72,6 +80,7 @@ class CubeSat_fsw:
         SimBase.fswProc.addTask(SimBase.CreateNewTask("inertial3DPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("hillPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mtb_mom_management_task", self.processTasksTimeStep), 20)
+        SimBase.fswProc.addTask(SimBase.CreateNewTask("mtb_detubmle_task", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("sunSafePointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("velocityPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpSteeringRWsTask", self.processTasksTimeStep), 10)
@@ -85,6 +94,9 @@ class CubeSat_fsw:
 
         SimBase.AddModelToTask("mtb_mom_management_task", self.tam_com_module, 7)
         SimBase.AddModelToTask("mtb_mom_management_task", self.mtb_momentum_management_module, 6)
+        
+        SimBase.AddModelToTask("mtb_detubmle_task", self.tam_com_module, 8)
+        SimBase.AddModelToTask("mtb_detubmle_task", self.detumble_module, 6)
         
         SimBase.AddModelToTask("sunSafePointTask", self.cssWlsEst, 10)
         SimBase.AddModelToTask("sunSafePointTask", self.sunSafePoint, 9)
@@ -152,6 +164,13 @@ class CubeSat_fsw:
                                 "self.enableTask('mtb_mom_management_task')",
                                 "self.enableTask('mrpFeedbackRWsTask')",
                                 "self.setAllButCurrentEventActivity('init_mtb_momentum_management', True)"])
+        
+        SimBase.createNewEvent("init_mtb_detumble", self.processTasksTimeStep, True,
+                                ["self.modeRequest == 'mtb_detumble'"],
+                                ["self.fswProc.disableAllTasks()",
+                                "self.FSWModels.zeroGateWayMsgs()",
+                                "self.enableTask('mtb_detubmle_task')",
+                                "self.setAllButCurrentEventActivity('init_mtb_detumble', True)"])
 
     def SetInertial3DPointGuidance(self):
         self.inertial3D.sigma_R0N = [0.2, 0.4, 0.6]
@@ -183,6 +202,15 @@ class CubeSat_fsw:
         self.tam_com_module.dcm_BS = [1., 0., 0., 0., 1., 0., 0., 0., 1.]
         self.tam_com_module.tamInMsg.subscribeTo(SimBase.DynModels.tam_module.tamDataOutMsg)
 
+    def setMagneticDetumble(self, SimBase):
+        self.detumble_module.P = 10
+        self.detumble_module.navAttInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
+        self.detumble_module.tamSensorInMsg.subscribeTo(self.tam_com_module.tamOutMsg)
+        self.detumble_module.mtbConfigInMsg.subscribeTo(SimBase.DynModels.mtbParamsInMsg)
+
+        messaging.MTBCmdMsg_C_addAuthor(self.detumble_module.cmdTorqueOutMsg, self.mtbCmdMsg)
+
+        
     def setMtbMomManagement(self, SimBase):
         self.mtb_momentum_management_module.wheelSpeedBiases = [800. * mc.rpm2radsec, 600. * mc.rpm2radsec,
                                                         400. * mc.rpm2radsec, 200. * mc.rpm2radsec]
@@ -303,6 +331,7 @@ class CubeSat_fsw:
         
         self.setTAMComm(SimBase)
         self.setMtbMomManagement(SimBase)
+        self.setMagneticDetumble(SimBase)
 
     def setupGatewayMsgs(self, SimBase):
         self.cmdTorqueMsg = messaging.CmdTorqueBodyMsg_C()

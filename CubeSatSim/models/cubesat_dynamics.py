@@ -130,7 +130,7 @@ class CubeSat_dynamics():
             1., 0., 0., 0.70710678,
             0., 1., 0., 0.70710678,
             0., 0., 1., 0.]
-        maxDipole = 0.1
+        maxDipole = 0.2
         self.mtbConfigParams.maxMtbDipoles = [maxDipole]*self.mtbConfigParams.numMTB
         self.mtbParamsInMsg = messaging.MTBArrayConfigMsg().write(self.mtbConfigParams)
         
