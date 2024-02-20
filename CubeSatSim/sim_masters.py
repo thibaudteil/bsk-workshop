@@ -9,7 +9,7 @@ sys.path.append(path + '/models')
 
 
 class Sim(SimulationBaseClass.SimBaseClass):
-    def __init__(self, fswRate=0.1, dynRate=0.1):
+    def __init__(self, fswRate=0.1, dynRate=0.05):
         self.dynRate = dynRate
         self.fswRate = fswRate
         # Create a sim module as an empty container
