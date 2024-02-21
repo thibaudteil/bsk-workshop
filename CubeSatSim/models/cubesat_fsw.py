@@ -192,7 +192,7 @@ class CubeSat_fsw:
                                 "self.setAllButCurrentEventActivity('init_mtb_detumble', True)"])
 
     def setInertial3DPointGuidance(self):
-        self.inertial3D.sigma_R0N = [0.2, 0.4, 0.6]
+        self.inertial3D.sigma_R0N = [0, 0, 0]
         messaging.AttRefMsg_C_addAuthor(self.inertial3D.attRefOutMsg, self.attRefMsg)
 
     def setHillPointGuidance(self, SimBase):
@@ -203,7 +203,7 @@ class CubeSat_fsw:
     def setSunSafePointGuidance(self, SimBase):
         self.sunSafePoint.imuInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
         self.sunSafePoint.sunDirectionInMsg.subscribeTo(self.cssWlsEst.navStateOutMsg)
-        self.sunSafePoint.sHatBdyCmd = [0.0, 0.0, 1.0]
+        self.sunSafePoint.sHatBdyCmd = [0.0, 1.0, 0.0]
         messaging.AttGuidMsg_C_addAuthor(self.sunSafePoint.attGuidanceOutMsg, self.attGuidMsg)
 
     def setVelocityPointGuidance(self, SimBase):
@@ -220,9 +220,8 @@ class CubeSat_fsw:
     def setEarthTrackingError(self, SimBase):
         self.trackingErrorEarth.attNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
         self.trackingErrorEarth.attRefInMsg.subscribeTo(self.attRefMsg)
-        R0R = np.array([[0.0, 0.0, -1.0], 
-                        [0.0, 1.0, 0.0],
-                        [1.0, 0.0, 0.0]])  # DCM from s/c body reference to body-fixed reference (offset)
+        R0R = np.eye(3)  # DCM from s/c body reference to body-fixed reference (offset)
+
         sigma_R0R = rbk.C2MRP(R0R.transpose())
         self.trackingErrorEarth.sigma_R0R = sigma_R0R
         messaging.AttGuidMsg_C_addAuthor(self.trackingErrorEarth.attGuidOutMsg, self.attGuidMsg)
