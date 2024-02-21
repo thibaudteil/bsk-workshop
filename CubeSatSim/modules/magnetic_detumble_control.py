@@ -55,14 +55,13 @@ class MagneticDetumbleControl(sysModel.SysModel):
         Gt_B = np.zeros([3, numMTB])
         for i in range(numMTB):
             Gt_B[:, i] = [Gt_vector_B[i], Gt_vector_B[i+numMTB], Gt_vector_B[i+2*numMTB]]
-        BGt_B = np.dot(B_tilde_B, Gt_B)
         
         # Define the desired torque from the Lyapunov control law
-        tau_B = -np.dot(self.P*np.eye(3), navAttMsgBuffer.omega_BN_B)
-
+        tau_B = -np.dot(self.P*np.eye(3), navAttMsgBuffer.omega_BN_B) 
+        
         # desired moments found using pseudo inverse (least squares)
-        pinv = np.linalg.pinv(np.dot(BGt_B.T, BGt_B))
-        dipole_command_B = -np.dot(np.dot(pinv, BGt_B.T), tau_B)
+        pinv = np.linalg.pinv(np.dot(Gt_B.T, Gt_B))
+        dipole_command_B = np.dot(np.dot(pinv, Gt_B.T), np.dot(B_tilde_B, tau_B))
                 
         # saturate the commands if they are greater than the maximum moment
         max_dipoles = mtbConfigInMsgBuffer.maxMtbDipoles[0:numMTB]

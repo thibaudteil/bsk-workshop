@@ -203,7 +203,7 @@ class CubeSat_fsw:
         self.tam_com_module.tamInMsg.subscribeTo(SimBase.DynModels.tam_module.tamDataOutMsg)
 
     def setMagneticDetumble(self, SimBase):
-        self.detumble_module.P = 10
+        self.detumble_module.P = 1E6
         self.detumble_module.navAttInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
         self.detumble_module.tamSensorInMsg.subscribeTo(self.tam_com_module.tamOutMsg)
         self.detumble_module.mtbConfigInMsg.subscribeTo(SimBase.DynModels.mtbParamsInMsg)
