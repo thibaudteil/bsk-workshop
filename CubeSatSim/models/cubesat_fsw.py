@@ -7,7 +7,7 @@ from Basilisk.architecture import messaging
 from Basilisk.fswAlgorithms import (hillPoint, inertial3D, attTrackingError, mrpFeedback,
                                     rwMotorTorque, tamComm, mtbMomentumManagement,
                                     velocityPoint, mrpSteering, rateServoFullNonlinear,
-                                    sunSafePoint, cssWlsEst)
+                                    sunSafePoint, cssWlsEst, celestialTwoBodyPoint)
 from Basilisk.utilities import RigidBodyKinematics as rbk
 from Basilisk.utilities import fswSetupRW
 from Basilisk.utilities import macros as mc
@@ -44,9 +44,15 @@ class CubeSat_fsw:
 
         self.cssWlsEst = cssWlsEst.cssWlsEst()
         self.cssWlsEst.ModelTag = "cssWlsEst"
+        
+        self.celTwoBodyPointEarth = celestialTwoBodyPoint.celestialTwoBodyPoint()
+        self.celTwoBodyPointEarth.ModelTag = "celEarthPoint"
 
         self.trackingError = attTrackingError.attTrackingError()
         self.trackingError.ModelTag = "trackingError"
+        
+        self.trackingErrorEarth = attTrackingError.attTrackingError()
+        self.trackingErrorEarth.ModelTag = "trackingErrorEarth"
 
         self.mrpFeedbackControl = mrpFeedback.mrpFeedback()
         self.mrpFeedbackControl.ModelTag = "mrpFeedbackControl"
@@ -85,12 +91,16 @@ class CubeSat_fsw:
         SimBase.fswProc.addTask(SimBase.CreateNewTask("velocityPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpSteeringRWsTask", self.processTasksTimeStep), 10)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpFeedbackRWsTask", self.processTasksTimeStep), 10)
+        SimBase.fswProc.addTask(SimBase.CreateNewTask("nadirPointTask", self.processTasksTimeStep), 10)
 
         SimBase.AddModelToTask("inertial3DPointTask", self.inertial3D, 10)
         SimBase.AddModelToTask("inertial3DPointTask", self.trackingError, 9)
 
         SimBase.AddModelToTask("hillPointTask", self.hillPoint, 10)
         SimBase.AddModelToTask("hillPointTask", self.trackingError, 9)
+        
+        SimBase.AddModelToTask("nadirPointTask", self.celTwoBodyPointEarth, 10)
+        SimBase.AddModelToTask("nadirPointTask", self.trackingErrorEarth, 9)
 
         SimBase.AddModelToTask("mtb_mom_management_task", self.tam_com_module, 7)
         SimBase.AddModelToTask("mtb_mom_management_task", self.mtb_momentum_management_module, 6)
@@ -138,6 +148,15 @@ class CubeSat_fsw:
                                 "self.enableTask('mrpFeedbackRWsTask')",
                                 "self.setAllButCurrentEventActivity('initiateHillPoint', True)"
                                 ])
+        
+        SimBase.createNewEvent("initEarthPoint", self.processTasksTimeStep, True,
+                               ["self.modeRequest == 'earthPoint'"],
+                               ["self.fswProc.disableAllTasks()",
+                                "self.FSWModels.zeroGateWayMsgs()",
+                                "self.enableTask('nadirPointTask')",
+                                "self.enableTask('mrpFeedbackRWsTask')",
+                                "self.setAllButCurrentEventActivity('initEarthPoint', True)"
+                                ])
 
         SimBase.createNewEvent("initiateSunSafePoint", self.processTasksTimeStep, True,
                                ["self.modeRequest == 'sunSafePoint'"],
@@ -172,31 +191,51 @@ class CubeSat_fsw:
                                 "self.enableTask('mtb_detubmle_task')",
                                 "self.setAllButCurrentEventActivity('init_mtb_detumble', True)"])
 
-    def SetInertial3DPointGuidance(self):
+    def setInertial3DPointGuidance(self):
         self.inertial3D.sigma_R0N = [0.2, 0.4, 0.6]
         messaging.AttRefMsg_C_addAuthor(self.inertial3D.attRefOutMsg, self.attRefMsg)
 
-    def SetHillPointGuidance(self, SimBase):
+    def setHillPointGuidance(self, SimBase):
         self.hillPoint.transNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.transOutMsg)
         self.hillPoint.celBodyInMsg.subscribeTo(SimBase.DynModels.EarthEphemObject.ephemOutMsgs[0])  # earth
         messaging.AttRefMsg_C_addAuthor(self.hillPoint.attRefOutMsg, self.attRefMsg)
 
-    def SetSunSafePointGuidance(self, SimBase):
+    def setSunSafePointGuidance(self, SimBase):
         self.sunSafePoint.imuInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
         self.sunSafePoint.sunDirectionInMsg.subscribeTo(self.cssWlsEst.navStateOutMsg)
         self.sunSafePoint.sHatBdyCmd = [0.0, 0.0, 1.0]
         messaging.AttGuidMsg_C_addAuthor(self.sunSafePoint.attGuidanceOutMsg, self.attGuidMsg)
 
-    def SetVelocityPointGuidance(self, SimBase):
+    def setVelocityPointGuidance(self, SimBase):
         self.velocityPoint.transNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.transOutMsg)
         self.velocityPoint.celBodyInMsg.subscribeTo(SimBase.DynModels.EarthEphemObject.ephemOutMsgs[0])
         self.velocityPoint.mu = SimBase.DynModels.gravFactory.gravBodies['earth'].mu
         messaging.AttRefMsg_C_addAuthor(self.velocityPoint.attRefOutMsg, self.attRefMsg)
 
-    def SetAttitudeTrackingError(self, SimBase):
+    def setAttitudeTrackingError(self, SimBase):
         self.trackingError.attNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
         self.trackingError.attRefInMsg.subscribeTo(self.attRefMsg)
         messaging.AttGuidMsg_C_addAuthor(self.trackingError.attGuidOutMsg, self.attGuidMsg)
+        
+    def setEarthTrackingError(self, SimBase):
+        self.trackingErrorEarth.attNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
+        self.trackingErrorEarth.attRefInMsg.subscribeTo(self.attRefMsg)
+        R0R = np.array([[0.0, 0.0, -1.0], 
+                        [0.0, 1.0, 0.0],
+                        [1.0, 0.0, 0.0]])  # DCM from s/c body reference to body-fixed reference (offset)
+        sigma_R0R = rbk.C2MRP(R0R.transpose())
+        self.trackingErrorEarth.sigma_R0R = sigma_R0R
+        messaging.AttGuidMsg_C_addAuthor(self.trackingErrorEarth.attGuidOutMsg, self.attGuidMsg)
+        
+    def setCelestialEarthPoint(self, SimBase):
+        self.celTwoBodyPointEarth.transNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.transOutMsg)
+        self.celTwoBodyPointEarth.celBodyInMsg.subscribeTo(
+            SimBase.DynModels.EarthEphemObject.ephemOutMsgs[SimBase.DynModels.earth])
+        self.celTwoBodyPointEarth.secCelBodyInMsg.subscribeTo(
+            SimBase.DynModels.EarthEphemObject.ephemOutMsgs[SimBase.DynModels.sun])
+        self.celTwoBodyPointEarth.singularityThresh = 1.0 * math.pi / 180.0
+        
+        messaging.AttRefMsg_C_addAuthor(self.celTwoBodyPointEarth.attRefOutMsg, self.attRefMsg)
         
     def setTAMComm(self, SimBase):
         self.tam_com_module.dcm_BS = [1., 0., 0., 0., 1., 0., 0., 0., 1.]
@@ -224,7 +263,7 @@ class CubeSat_fsw:
         messaging.MTBCmdMsg_C_addAuthor(self.mtb_momentum_management_module.mtbCmdOutMsg, self.mtbCmdMsg)
 
 
-    def SetCSSWlsEst(self, SimBase):
+    def setCSSWlsEst(self, SimBase):
         cssConfig = messaging.CSSConfigMsgPayload()
         totalCSSList = []
         nHat_B_vec = [
@@ -250,7 +289,7 @@ class CubeSat_fsw:
         self.cssWlsEst.cssDataInMsg.subscribeTo(SimBase.DynModels.CSSConstellationObject.constellationOutMsg)
         self.cssWlsEst.cssConfigInMsg.subscribeTo(self.cssConfigMsg)
 
-    def SetMRPFeedbackControl(self, SimBase):
+    def setMRPFeedbackControl(self, SimBase):
         self.mrpFeedbackControl.guidInMsg.subscribeTo(self.attGuidMsg)
         self.mrpFeedbackControl.vehConfigInMsg.subscribeTo(self.vcMsg)
         messaging.CmdTorqueBodyMsg_C_addAuthor(self.mrpFeedbackControl.cmdTorqueOutMsg, self.cmdTorqueDirectMsg)
@@ -260,7 +299,7 @@ class CubeSat_fsw:
         self.mrpFeedbackControl.P = 30.0
         self.mrpFeedbackControl.integralLimit = 2. / self.mrpFeedbackControl.Ki * 0.1
 
-    def SetMRPFeedbackRWA(self, SimBase):
+    def setMRPFeedbackRWA(self, SimBase):
         self.mrpFeedbackRWs.Ki = -1  # make value negative to turn off integral feedback
         self.mrpFeedbackRWs.K = 0.0001
         self.mrpFeedbackRWs.P = 0.002
@@ -272,14 +311,14 @@ class CubeSat_fsw:
         self.mrpFeedbackRWs.guidInMsg.subscribeTo(self.attGuidMsg)
         messaging.CmdTorqueBodyMsg_C_addAuthor(self.mrpFeedbackRWs.cmdTorqueOutMsg, self.cmdTorqueMsg)
 
-    def SetMRPSteering(self):
+    def setMRPSteering(self):
         self.mrpSteering.K1 = 0.05
         self.mrpSteering.ignoreOuterLoopFeedforward = False
         self.mrpSteering.K3 = 0.75
         self.mrpSteering.omega_max = 1.0 * mc.D2R
         self.mrpSteering.guidInMsg.subscribeTo(self.attGuidMsg)
 
-    def SetRateServo(self, SimBase):
+    def setRateServo(self, SimBase):
         self.rateServo.guidInMsg.subscribeTo(self.attGuidMsg)
         self.rateServo.vehConfigInMsg.subscribeTo(self.vcMsg)
         self.rateServo.rwParamsInMsg.subscribeTo(self.fswRwConfigMsg)
@@ -292,17 +331,17 @@ class CubeSat_fsw:
         self.rateServo.integralLimit = 2. / self.rateServo.Ki * 0.1
         self.rateServo.knownTorquePntB_B = [0., 0., 0.]
 
-    def SetVehicleConfiguration(self):
+    def setVehicleConfiguration(self):
         vehicleConfigOut = messaging.VehicleConfigMsgPayload()
         vehicleConfigOut.ISCPntB_B = [0.02 / 3, 0., 0.,
                                      0., 0.1256 / 3, 0.,
                                      0., 0., 0.1256 / 3]
         self.vcMsg = messaging.VehicleConfigMsg().write(vehicleConfigOut)
 
-    def SetRWConfigMsg(self, SimBase):
+    def setRWConfigMsg(self, SimBase):
         self.fswRwConfigMsg = SimBase.DynModels.rwFactory.getConfigMessage()
 
-    def SetRWMotorTorque(self):
+    def setRWMotorTorque(self):
         controlAxes_B = [
             1.0, 0.0, 0.0
             , 0.0, 1.0, 0.0
@@ -315,19 +354,21 @@ class CubeSat_fsw:
 
     # Global call to initialize every module
     def InitAllFSWObjects(self, SimBase):
-        self.SetVehicleConfiguration()
-        self.SetRWConfigMsg(SimBase)
-        self.SetInertial3DPointGuidance()
-        self.SetHillPointGuidance(SimBase)
-        self.SetCSSWlsEst(SimBase)
-        self.SetSunSafePointGuidance(SimBase)
-        self.SetVelocityPointGuidance(SimBase)
-        self.SetAttitudeTrackingError(SimBase)
-        self.SetMRPFeedbackControl(SimBase)
-        self.SetMRPFeedbackRWA(SimBase)
-        self.SetMRPSteering()
-        self.SetRateServo(SimBase)
-        self.SetRWMotorTorque()
+        self.setVehicleConfiguration()
+        self.setRWConfigMsg(SimBase)
+        self.setInertial3DPointGuidance()
+        self.setHillPointGuidance(SimBase)
+        self.setCSSWlsEst(SimBase)
+        self.setSunSafePointGuidance(SimBase)
+        self.setVelocityPointGuidance(SimBase)
+        self.setAttitudeTrackingError(SimBase)
+        self.setEarthTrackingError(SimBase)
+        self.setCelestialEarthPoint(SimBase)
+        self.setMRPFeedbackControl(SimBase)
+        self.setMRPFeedbackRWA(SimBase)
+        self.setMRPSteering()
+        self.setRateServo(SimBase)
+        self.setRWMotorTorque()
         
         self.setTAMComm(SimBase)
         self.setMtbMomManagement(SimBase)

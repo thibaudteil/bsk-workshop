@@ -88,6 +88,7 @@ class CubeSat_dynamics():
 
         self.gravFactory.spiceObject.zeroBase = 'Earth'
 
+        self.EarthEphemObject.addSpiceInputMsg(self.gravFactory.spiceObject.planetStateOutMsgs[self.sun])
         self.EarthEphemObject.addSpiceInputMsg(self.gravFactory.spiceObject.planetStateOutMsgs[self.earth])
 
     def setMagneticField(self):
