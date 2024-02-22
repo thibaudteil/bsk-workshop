@@ -36,11 +36,11 @@ class CubeSat_dynamics():
         self.gravFactory = simIncludeGravBody.gravBodyFactory()
         self.rwFactory = simIncludeRW.rwFactory()
         self.extForceTorqueObject = extForceTorque.ExtForceTorque()
-        self.simpleNavObject = simpleNav.SimpleNav()
+        # TODO make a simple nav object
+        self.simpleNavObject = []
         self.eclipseObject = eclipse.Eclipse()
         self.CSSConstellationObject = coarseSunSensor.CSSConstellation()
         self.rwStateEffector = reactionWheelStateEffector.ReactionWheelStateEffector()
-        self.thrustersDynamicEffector = thrusterDynamicEffector.ThrusterDynamicEffector()
         self.EarthEphemObject = ephemerisConverter.EphemerisConverter()
         
         self.mag_field_module = magneticFieldWMM.MagneticFieldWMM()
@@ -50,7 +50,8 @@ class CubeSat_dynamics():
         self.InitAllDynObjects()
 
         SimBase.AddModelToTask(self.taskName, self.scObject, 201)
-        SimBase.AddModelToTask(self.taskName, self.simpleNavObject, 109)
+        # TODO add the simple nav obecjt to the dynamics task
+
         SimBase.AddModelToTask(self.taskName, self.gravFactory.spiceObject, 200)
         SimBase.AddModelToTask(self.taskName, self.EarthEphemObject, 198)
         SimBase.AddModelToTask(self.taskName, self.CSSConstellationObject, 108)
@@ -63,16 +64,16 @@ class CubeSat_dynamics():
         SimBase.AddModelToTask(self.taskName, self.mtb_effector, 213)
 
     def setSpacecraftHub(self):
-        self.scObject.ModelTag = "bskSat"
+        self.scObject.ModelTag = "cubesat"
         # -- Crate a new variable for the sim sc inertia I_sc. Note: this is currently accessed from FSWClass
-        self.I_sc = [0.02 / 3, 0., 0.,
-                     0., 0.1256 / 3, 0.,
-                     0., 0., 0.1256 / 3]
+        # TODO add the inertial 0.02 / 3 on the x axis, and 0.1256 / 3 on the y/z axes
+        self.I_sc = []
         self.scObject.hub.mHub = 10.0  # kg - spacecraft mass
         self.scObject.hub.r_BcB_B = [[0.0], [0.0], [0.0]]  # m - position vector of body-fixed point B relative to CM
         self.scObject.hub.IHubPntBc_B = sp.np2EigenMatrix3d(self.I_sc)
 
     def setGravityBodies(self):
+        #TODO change the sim to todays date
         timeInitString = "2024 FEB 28 00:00:00.0"
         gravBodies = self.gravFactory.createBodies(['sun', 'earth', 'moon'])
         gravBodies['earth'].isCentralBody = True
@@ -85,7 +86,6 @@ class CubeSat_dynamics():
                                               timeInitString,
                                               epochInMsg=True)
         self.epochMsg = self.gravFactory.epochMsg
-
         self.gravFactory.spiceObject.zeroBase = 'Earth'
 
         self.EarthEphemObject.addSpiceInputMsg(self.gravFactory.spiceObject.planetStateOutMsgs[self.sun])
@@ -112,7 +112,8 @@ class CubeSat_dynamics():
 
     def setSimpleNavObject(self):
         self.simpleNavObject.ModelTag = "SimpleNavigation"
-        self.simpleNavObject.scStateInMsg.subscribeTo(self.scObject.scStateOutMsg)
+        # TODO subscribe simple nav to the spacecraft state message
+        self.simpleNavObject.scStateInMsg.subscribeTo()
 
     def setMagnetoTorqueBar(self):
         self.tam_module.ModelTag = "TAM_sensor"
@@ -125,13 +126,10 @@ class CubeSat_dynamics():
         # mtbConfigData message
         self.mtbConfigParams = messaging.MTBArrayConfigMsgPayload()
         self.mtbConfigParams.numMTB = 4
-
-        # row major toque bar alignments
-        self.mtbConfigParams.GtMatrix_B =[
-            1., 0., 0., 0.70710678,
-            0., 1., 0., 0.70710678,
-            0., 0., 1., 0.]
         maxDipole = 0.1
+
+        #TODO fill out torque bar direction vectors in the body frame
+        self.mtbConfigParams.GtMatrix_B =[]
         self.mtbConfigParams.maxMtbDipoles = [maxDipole]*self.mtbConfigParams.numMTB
         self.mtbParamsInMsg = messaging.MTBArrayConfigMsg().write(self.mtbConfigParams)
         
@@ -143,17 +141,12 @@ class CubeSat_dynamics():
         self.scObject.addDynamicEffector(self.mtb_effector)
         
     def setReactionWheelDynEffector(self):
-        rwPosVector = [[0.1, 0.1, 0.22],
-                       [0.1, -0.1, 0.22],
-                       [-0.1, -0.1, 0.22],
-                       [-0.1, 0.1, 0.22]
-                       ]
+        #TODO fill out RW position vectors in the body frame
+        rwPosVector = []
         
+        #TODO fill out RW orientations (spin axis) in the body frame
         beta = 52. * np.pi / 180.
-        Gs = np.array([
-                [0.,            0.,             np.cos(beta), -np.cos(beta)],
-                [np.cos(beta),  np.sin(beta),  -np.sin(beta), -np.sin(beta)],
-                [np.sin(beta), -np.cos(beta),   0.,             0.]])
+        Gs = np.array([])
 
         # create each RW by specifying the RW type, the spin axis gsHat, plus optional arguments
         self.RW1 = self.rwFactory.create('BCT_RWP015', 
@@ -191,17 +184,8 @@ class CubeSat_dynamics():
             cssDevice.sunEclipseInMsg.subscribeTo(self.eclipseObject.eclipseOutMsgs[0])
             cssDevice.this.disown()
 
-        # setup CSS sensor normal vectors in body frame components
-        nHat_B_List = [
-            [0.0, 0.707107, 0.707107],
-            [0.707107, 0., 0.707107],
-            [0.0, -0.707107, 0.707107],
-            [-0.707107, 0., 0.707107],
-            [0.0, -0.965926, -0.258819],
-            [-0.707107, -0.353553, -0.612372],
-            [0., 0.258819, -0.965926],
-            [0.707107, -0.353553, -0.612372]
-        ]
+        #TODO fill out CSS boresight vecotrs in the body frame
+        nHat_B_List = []
         numCSS = len(nHat_B_List)
 
         # store all
@@ -223,7 +207,8 @@ class CubeSat_dynamics():
         self.setSpacecraftHub()
         self.setGravityBodies()
         self.setExternalForceTorqueObject()
-        self.setSimpleNavObject()
+        # TODO call the setSimpleNav function to configure it
+
         self.setEclipseObject()
         self.setCSSConstellation()
         self.setMagneticField()
@@ -231,4 +216,3 @@ class CubeSat_dynamics():
         self.setReactionWheelDynEffector()
         self.setMtbEffector()
         self.setMagnetoTorqueBar()
-
