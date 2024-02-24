@@ -14,6 +14,8 @@ from Basilisk.utilities import unitTestSupport as sp
 
 bskPath = __path__[0]
 
+# TODO : We want to create a magnetic torque bar detumble scenario. 
+# We need to add and configure the necessary simulation modules
 
 class CubeSat_dynamics():
     def __init__(self, SimBase, dynRate):
@@ -43,9 +45,10 @@ class CubeSat_dynamics():
         self.thrustersDynamicEffector = thrusterDynamicEffector.ThrusterDynamicEffector()
         self.EarthEphemObject = ephemerisConverter.EphemerisConverter()
         
-        self.mag_field_module = magneticFieldWMM.MagneticFieldWMM()
-        self.tam_module = magnetometer.Magnetometer()
-        self.mtb_effector = MtbEffector.MtbEffector()
+        # TODO : Instantiate our magnetic modules
+        self.mag_field_module = 
+        self.tam_module = 
+        self.mtb_effector = 
 
         self.InitAllDynObjects()
 
@@ -58,6 +61,7 @@ class CubeSat_dynamics():
         SimBase.AddModelToTask(self.taskName, self.rwStateEffector, 301)
         SimBase.AddModelToTask(self.taskName, self.extForceTorqueObject, 300)
         
+        # TODO : add our modules to the dynamics task
         SimBase.AddModelToTask(self.taskName, self.mag_field_module, 199)
         SimBase.AddModelToTask(self.taskName, self.tam_module, 210)
         SimBase.AddModelToTask(self.taskName, self.mtb_effector, 213)
@@ -91,12 +95,14 @@ class CubeSat_dynamics():
         self.EarthEphemObject.addSpiceInputMsg(self.gravFactory.spiceObject.planetStateOutMsgs[self.sun])
         self.EarthEphemObject.addSpiceInputMsg(self.gravFactory.spiceObject.planetStateOutMsgs[self.earth])
 
+    # TODO : Set the magnetic field module messages
     def setMagneticField(self):
         self.mag_field_module.ModelTag = "WMM"
         self.mag_field_module.dataPath = bskPath + '/supportData/MagneticField/'
         epochMsg = sp.timeStringToGregorianUTCMsg('2019 June 27, 10:23:0.0 (UTC)')
-        self.mag_field_module.epochInMsg.subscribeTo(epochMsg)
-        self.mag_field_module.addSpacecraftToModel(self.scObject.scStateOutMsg) 
+        # TODO : Set the magnetic field module messages
+        self.mag_field_module.epochInMsg.subscribeTo()
+        self.mag_field_module.addSpacecraftToModel() 
         
     def setEclipseObject(self):
         self.eclipseObject.ModelTag = "eclipseObject"
@@ -135,11 +141,14 @@ class CubeSat_dynamics():
         self.mtbConfigParams.maxMtbDipoles = [maxDipole]*self.mtbConfigParams.numMTB
         self.mtbParamsInMsg = messaging.MTBArrayConfigMsg().write(self.mtbConfigParams)
         
+    # TODO : Set the magnetic torque bar messages
     def setMtbEffector(self):
         self.mtb_effector.ModelTag = "MtbEff"
-        self.mtb_effector.mtbParamsInMsg.subscribeTo(self.mtbParamsInMsg)
-        self.mtb_effector.magInMsg.subscribeTo(self.mag_field_module.envOutMsgs[0])
+        self.mtb_effector.mtbParamsInMsg.subscribeTo()
+        self.mtb_effector.magInMsg.subscribeTo()
         
+        # Add the torque bar to the dynamics engine: it is a dynamic effector (external force that does not get effected by 
+        # the rest of the spacecraft dynamics)
         self.scObject.addDynamicEffector(self.mtb_effector)
         
     def setReactionWheelDynEffector(self):
