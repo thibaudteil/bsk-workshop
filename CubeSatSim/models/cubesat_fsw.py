@@ -49,10 +49,11 @@ class CubeSat_fsw:
         self.cssWlsEst = cssWlsEst.cssWlsEst()
         self.cssWlsEst.ModelTag = "cssWlsEst"
         
-        # TODO :  Instantiate the module
-
-        self.trackingError = attTrackingError.attTrackingError()
-        self.trackingError.ModelTag = "trackingError"
+        # TODO :  Instantiate the modules
+        self.celTwoBodyPointEarth = 
+        self.celTwoBodyPointEarth.ModelTag = ""
+        self.trackingError = 
+        self.trackingError.ModelTag = ""
         
         self.trackingErrorEarth = attTrackingError.attTrackingError()
         self.trackingErrorEarth.ModelTag = "trackingErrorEarth"
@@ -95,6 +96,7 @@ class CubeSat_fsw:
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpSteeringRWsTask", self.processTasksTimeStep), 10)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpFeedbackRWsTask", self.processTasksTimeStep), 10)
         # TODO :  Create new pointing task called nadirPointTask:
+        SimBase.fswProc.addTask(SimBase.CreateNewTask()
         SimBase.fswProc.addTask(SimBase.CreateNewTask("nadirPointTask", self.processTasksTimeStep), 10)
 
         SimBase.AddModelToTask("inertial3DPointTask", self.inertial3D, 10)
@@ -104,6 +106,8 @@ class CubeSat_fsw:
         SimBase.AddModelToTask("hillPointTask", self.trackingError, 9)
         
         # TODO :  add the necessary modules to the nadir point task. Be cautious with priorities
+        SimBase.AddModelToTask()
+        SimBase.AddModelToTask()
 
         SimBase.AddModelToTask("mtb_mom_management_task", self.tam_com_module, 7)
         SimBase.AddModelToTask("mtb_mom_management_task", self.mtb_momentum_management_module, 6)
@@ -153,7 +157,7 @@ class CubeSat_fsw:
                                 ])
     
         # TODO :  create a new event, which is a mode we can call. use surrounding examples
-
+                                
         SimBase.createNewEvent("initiateSunSafePoint", self.processTasksTimeStep, True,
                                ["self.modeRequest == 'sunSafePoint'"],
                                ["self.fswProc.disableAllTasks()",
