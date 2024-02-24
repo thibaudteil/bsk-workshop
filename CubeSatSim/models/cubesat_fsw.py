@@ -16,6 +16,10 @@ path = os.getcwd()
 sys.path.append(path + '/../modules')
 import magnetic_detumble_control
 
+
+# TODO :  We want to add a earth pointing mode using celestialTwoBodyPoint
+# go check the documentation!
+
 class CubeSat_fsw:
     def __init__(self, SimBase, fswRate):
         self.vcMsg = None
@@ -45,8 +49,7 @@ class CubeSat_fsw:
         self.cssWlsEst = cssWlsEst.cssWlsEst()
         self.cssWlsEst.ModelTag = "cssWlsEst"
         
-        self.celTwoBodyPointEarth = celestialTwoBodyPoint.celestialTwoBodyPoint()
-        self.celTwoBodyPointEarth.ModelTag = "celEarthPoint"
+        # TODO :  Instantiate the module
 
         self.trackingError = attTrackingError.attTrackingError()
         self.trackingError.ModelTag = "trackingError"
@@ -91,6 +94,7 @@ class CubeSat_fsw:
         SimBase.fswProc.addTask(SimBase.CreateNewTask("velocityPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpSteeringRWsTask", self.processTasksTimeStep), 10)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpFeedbackRWsTask", self.processTasksTimeStep), 10)
+        # TODO :  Create new pointing task called nadirPointTask:
         SimBase.fswProc.addTask(SimBase.CreateNewTask("nadirPointTask", self.processTasksTimeStep), 10)
 
         SimBase.AddModelToTask("inertial3DPointTask", self.inertial3D, 10)
@@ -99,8 +103,7 @@ class CubeSat_fsw:
         SimBase.AddModelToTask("hillPointTask", self.hillPoint, 10)
         SimBase.AddModelToTask("hillPointTask", self.trackingError, 9)
         
-        SimBase.AddModelToTask("nadirPointTask", self.celTwoBodyPointEarth, 10)
-        SimBase.AddModelToTask("nadirPointTask", self.trackingErrorEarth, 9)
+        # TODO :  add the necessary modules to the nadir point task. Be cautious with priorities
 
         SimBase.AddModelToTask("mtb_mom_management_task", self.tam_com_module, 7)
         SimBase.AddModelToTask("mtb_mom_management_task", self.mtb_momentum_management_module, 6)
@@ -148,15 +151,8 @@ class CubeSat_fsw:
                                 "self.enableTask('mrpFeedbackRWsTask')",
                                 "self.setAllButCurrentEventActivity('initiateHillPoint', True)"
                                 ])
-        
-        SimBase.createNewEvent("initEarthPoint", self.processTasksTimeStep, True,
-                               ["self.modeRequest == 'earthPoint'"],
-                               ["self.fswProc.disableAllTasks()",
-                                "self.FSWModels.zeroGateWayMsgs()",
-                                "self.enableTask('nadirPointTask')",
-                                "self.enableTask('mrpFeedbackRWsTask')",
-                                "self.setAllButCurrentEventActivity('initEarthPoint', True)"
-                                ])
+    
+        # TODO :  create a new event, which is a mode we can call. use surrounding examples
 
         SimBase.createNewEvent("initiateSunSafePoint", self.processTasksTimeStep, True,
                                ["self.modeRequest == 'sunSafePoint'"],
@@ -217,24 +213,21 @@ class CubeSat_fsw:
         self.trackingError.attRefInMsg.subscribeTo(self.attRefMsg)
         messaging.AttGuidMsg_C_addAuthor(self.trackingError.attGuidOutMsg, self.attGuidMsg)
         
+    # TODO :  Set the Celestial two body point module. Use documentation and previous modules for messages
     def setEarthTrackingError(self, SimBase):
-        self.trackingErrorEarth.attNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
-        self.trackingErrorEarth.attRefInMsg.subscribeTo(self.attRefMsg)
-        R0R = np.eye(3)  # DCM from s/c body reference to body-fixed reference (offset)
+        self.trackingErrorEarth.attNavInMsg.subscribeTo()
+        self.trackingErrorEarth.attRefInMsg.subscribeTo()
 
-        sigma_R0R = rbk.C2MRP(R0R.transpose())
-        self.trackingErrorEarth.sigma_R0R = sigma_R0R
-        messaging.AttGuidMsg_C_addAuthor(self.trackingErrorEarth.attGuidOutMsg, self.attGuidMsg)
+        self.trackingErrorEarth.sigma_R0R = 
+        messaging.AttGuidMsg_C_addAuthor()
         
+    # TODO :  Set the Celestial two body point module. Use documentation and previous modules for messages
     def setCelestialEarthPoint(self, SimBase):
-        self.celTwoBodyPointEarth.transNavInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.transOutMsg)
-        self.celTwoBodyPointEarth.celBodyInMsg.subscribeTo(
-            SimBase.DynModels.EarthEphemObject.ephemOutMsgs[SimBase.DynModels.earth])
-        self.celTwoBodyPointEarth.secCelBodyInMsg.subscribeTo(
-            SimBase.DynModels.EarthEphemObject.ephemOutMsgs[SimBase.DynModels.sun])
-        self.celTwoBodyPointEarth.singularityThresh = 1.0 * math.pi / 180.0
+        self.celTwoBodyPointEarth.transNavInMsg.subscribeTo()
+        self.celTwoBodyPointEarth.celBodyInMsg.subscribeTo()
+        self.celTwoBodyPointEarth.secCelBodyInMsg.subscribeTo()
         
-        messaging.AttRefMsg_C_addAuthor(self.celTwoBodyPointEarth.attRefOutMsg, self.attRefMsg)
+        messaging.AttRefMsg_C_addAuthor()
         
     def setTAMComm(self, SimBase):
         self.tam_com_module.dcm_BS = [1., 0., 0., 0., 1., 0., 0., 0., 1.]
