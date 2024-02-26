@@ -15,11 +15,8 @@ from Basilisk.utilities import macros as mc
 path = os.getcwd()
 sys.path.append(path + '/../modules')
 
-# TODO : We will create a new detumble fsw mode 
 
-
-# TODO : Import our detumble control law
-
+import magnetic_detumble_control
 
 class CubeSat_fsw:
     def __init__(self, SimBase, fswRate):
@@ -74,11 +71,11 @@ class CubeSat_fsw:
         self.rwMotorTorque = rwMotorTorque.rwMotorTorque()
         self.rwMotorTorque.ModelTag = "rwMotorTorque"
         
-        # TODO : Instantiate two modules and give them names
-        self.tam_com_module = 
-        self.tam_com_module.ModelTag = 
-        self.detumble_module = 
-        self.detumble_module.ModelTag = 
+        self.tam_com_module = tamComm.tamComm()
+        self.tam_com_module.ModelTag = "tam_comm"
+        
+        self.detumble_module = magnetic_detumble_control.MagneticDetumbleControl()
+        self.detumble_module.ModelTag = "detumble"
         
         self.mtb_momentum_management_module = mtbMomentumManagement.mtbMomentumManagement()
         self.mtb_momentum_management_module.ModelTag = "mtbMomentumManagement"   
@@ -90,8 +87,8 @@ class CubeSat_fsw:
         SimBase.fswProc.addTask(SimBase.CreateNewTask("inertial3DPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("hillPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mtb_mom_management_task", self.processTasksTimeStep), 20)
-        # TODO : Make a detumble task and add it to the fsw task group
-        SimBase.fswProc.addTask(SimBase.CreateNewTask()
+
+        SimBase.fswProc.addTask(SimBase.CreateNewTask("detumble_task", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("sunSafePointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("velocityPointTask", self.processTasksTimeStep), 20)
         SimBase.fswProc.addTask(SimBase.CreateNewTask("mrpSteeringRWsTask", self.processTasksTimeStep), 10)
@@ -110,9 +107,8 @@ class CubeSat_fsw:
         SimBase.AddModelToTask("mtb_mom_management_task", self.tam_com_module, 7)
         SimBase.AddModelToTask("mtb_mom_management_task", self.mtb_momentum_management_module, 6)
         
-        # TODO : Add the modules to the detumble task created above, priorities!
-        SimBase.AddModelToTask()
-        SimBase.AddModelToTask()
+        SimBase.AddModelToTask("detumble_task", self.tam_com_module, 8)
+        SimBase.AddModelToTask("detumble_task", self.detumble_module, 7)
         
         SimBase.AddModelToTask("sunSafePointTask", self.cssWlsEst, 10)
         SimBase.AddModelToTask("sunSafePointTask", self.sunSafePoint, 9)
@@ -190,8 +186,12 @@ class CubeSat_fsw:
                                 "self.enableTask('mrpFeedbackRWsTask')",
                                 "self.setAllButCurrentEventActivity('init_mtb_momentum_management', True)"])
         
-        # TODO : Create the detumble mode
-
+        SimBase.createNewEvent("init_mtb_detumble", self.processTasksTimeStep, True,
+                                ["self.modeRequest == 'mtb_detumble'"],
+                                ["self.fswProc.disableAllTasks()",
+                                "self.FSWModels.zeroGateWayMsgs()",
+                                "self.enableTask('detumble_task')",
+                                "self.setAllButCurrentEventActivity('init_mtb_detumble', True)"])
 
     def setInertial3DPointGuidance(self):
         self.inertial3D.sigma_R0N = [0, 0, 0]
@@ -244,14 +244,13 @@ class CubeSat_fsw:
                                       0., 0., 1.]
         self.tam_com_module.tamInMsg.subscribeTo(SimBase.DynModels.tam_module.tamDataOutMsg)
 
-    # TODO : Connect the messages for the detumble controller
     def setMagneticDetumble(self, SimBase):
         self.detumble_module.P = 1E6
-        self.detumble_module.navAttInMsg.subscribeTo()
-        self.detumble_module.tamSensorInMsg.subscribeTo()
-        self.detumble_module.mtbConfigInMsg.subscribeTo()
+        self.detumble_module.navAttInMsg.subscribeTo(SimBase.DynModels.simpleNavObject.attOutMsg)
+        self.detumble_module.tamSensorInMsg.subscribeTo(self.tam_com_module.tamOutMsg)
+        self.detumble_module.mtbConfigInMsg.subscribeTo(SimBase.DynModels.mtbParamsInMsg)
 
-        messaging.MTBCmdMsg_C_addAuthor()
+        messaging.MTBCmdMsg_C_addAuthor(self.detumble_module.cmdTorqueOutMsg, self.mtbCmdMsg)
 
         
     def setMtbMomManagement(self, SimBase):
