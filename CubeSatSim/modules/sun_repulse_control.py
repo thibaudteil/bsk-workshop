@@ -22,10 +22,13 @@ class SunRepulse(sysModel.SysModel):
         self.small_angle = 0.01
         self.K_proportional_gain = 1.0
 
-        self.navigation_in_msg = NavAttMsgReader()
-        self.attitude_torque_out_msg = CmdTorqueBodyMsg()
-        self.base_torque_in_msg = CmdTorqueBodyMsgReader()
-        self.attitude_guidance_out_msg = AttGuidMsg()
+        # TODO set input messages to NavAtt and CmdTorque using MsgReaders
+        self.navigation_in_msg = 
+        self.base_torque_in_msg = 
+        
+        # TODO set output messages to CmdTorque and AttGuid using Msgs
+        self.attitude_torque_out_msg = 
+        self.attitude_guidance_out_msg = 
     
     def UpdateState(self, current_sim_nanos):
         """
@@ -35,9 +38,10 @@ class SunRepulse(sysModel.SysModel):
         :param current_sim_nanos: current simulation time in nano-seconds
         :return: none
         """
-        # ipdb.set_trace()
-        navigation_msg = self.navigation_in_msg()
-        sNorm = np.linalg.norm(navigation_msg.vehSunPntBdy)
+        # TODO read the input nav message
+        navigation_msg = 
+        # TODO read the vehSunPntBdy field of the message
+        sNorm = np.linalg.norm(navigation_msg)
         sigma_BR = np.zeros(3)
 
         if sNorm > self.min_unit_vector_magnitude:
@@ -58,27 +62,21 @@ class SunRepulse(sysModel.SysModel):
                 sigma_BR = mrp_command_BR - mrp_remain_BR
                 rbk.MRPswitch(sigma_BR, 1.0)
         
-        repulse_torque = self.K_proportional_gain * sigma_BR
-        # print("repulse torque: ")
-        # print(repulseTorque)
-        attitude_torque_out = CmdTorqueBodyMsgPayload() 
+        # TODO multiply the K_proportial_gain by the sigma_BR term to get the repulsive torque
+        repulse_torque = 
 
-        attitude_torque_out.torqueRequestBody = (np.array(self.base_torque_in_msg().torqueRequestBody) + repulse_torque).tolist()
-        # print("self.baseTorqueInMsg().torqueRequestBody: ")
-        # print(self.baseTorqueInMsg().torqueRequestBody)
-        # print("attTorqueOut.torqueRequestBody: ")
-        # print(attTorqueOut.torqueRequestBody)
-        self.attitude_torque_out_msg.write(attitude_torque_out, current_sim_nanos, self.moduleID)
+        # TODO make the Cmd Torque Msg Payload
+        attitude_torque_out =  
+
+        # TODO add the repulse_torque to the previously requested torque (replace 0)
+        attitude_torque_out.torqueRequestBody = (np.array(self.base_torque_in_msg().torqueRequestBody) + 0).tolist()
+
+        # TODO write out the torque message payload, at the current time, with the module ID
+        self.attitude_torque_out_msg.write()
 
     
     def Reset(self, current_sim_nanos):
-        """
-        The Reset method is used to clear out any persistent variables that need to get changed
-        when a task is restarted.  This method is called once after selfInit,
-        but it should be written to allow the user to call it multiple times.
-        :param current_sim_nanos: current simulation time in nano-seconds
-        :return: none
-        """
+
         if np.linalg.norm(self.sHat_B_avoid) < 0.1:
             self.bskLogger.bskLog(sysModel.BSK_ERROR, f"sHat_B_avoid: is not unit norm")
         else:
